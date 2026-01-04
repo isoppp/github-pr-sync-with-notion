@@ -9,6 +9,7 @@
 ## Features
 
 - 🔗 **Automatic PR Linking**: Automatically add PR links to Notion when creating a PR
+- 🔢 **Multiple Task Support**: Link a single PR to multiple Notion tasks (e.g., `[TASK-123][TASK-456]`)
 - ✏️ **Title Change Detection**: Automatically update Notion when PR title (task ID) changes
 - ✅ **Status Update**: Automatically update Notion status to "Done" when PR is merged
 - 💬 **PR Comments**: Post Notion page links as PR comments
@@ -123,10 +124,51 @@ Create a PR with a title like:
 [TASK-123] Add authentication feature
 ```
 
+Or link multiple tasks:
+```
+[TASK-123][TASK-456] Fix authentication and update docs
+```
+
 The workflow will:
-- Add PR link to Notion task #123
-- Post a comment on the PR with link to Notion page
-- Update status to "Done" when merged
+- Add PR link to the specified Notion task(s)
+- Post a comment on the PR with link(s) to Notion page(s)
+- Update status to "Done" when merged (for all linked tasks)
+
+## Multiple Task Support
+
+You can link a single PR to multiple Notion tasks by including multiple task IDs in the PR title:
+
+```
+[TASK-123][TASK-456][TASK-789] Implement feature across multiple components
+```
+
+### How it works:
+
+**When PR is created:**
+- PR link is added to all specified tasks (TASK-123, TASK-456, TASK-789)
+- PR comment shows links to all Notion pages
+
+**When title is edited:**
+- Removing `[TASK-123]` removes the PR link from that task
+- Adding `[TASK-999]` adds the PR link to that task
+- Existing links remain unchanged
+
+**When PR is merged:**
+- All tasks in the title are updated to "Done" status
+
+**Example workflow:**
+```
+1. Create PR: [TASK-123][TASK-456] Feature implementation
+   → Links added to both tasks
+
+2. Edit title: [TASK-123][TASK-789] Feature implementation
+   → Link removed from TASK-456
+   → Link added to TASK-789
+   → TASK-123 link unchanged
+
+3. Merge PR
+   → Both TASK-123 and TASK-789 marked as "Done"
+```
 
 ## Configuration
 
