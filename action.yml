@@ -64,7 +64,7 @@ runs:
           function extractTaskIds(title) {
             if (!title) return [];
             const escapedPrefix = escapeRegex(prefix);
-            const pattern = new RegExp(`\\[${escapedPrefix}-(\\d+)\\]`, 'g');
+            const pattern = new RegExp(`${escapedPrefix}-(\\d+)`, 'g');
             const matches = [...title.matchAll(pattern)];
             return matches.map(match => parseInt(match[1]));
           }
