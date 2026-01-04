@@ -61,12 +61,12 @@ runs:
             return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           }
 
-          function extractTaskId(title) {
-            if (!title) return null;
+          function extractTaskIds(title) {
+            if (!title) return [];
             const escapedPrefix = escapeRegex(prefix);
-            const pattern = new RegExp(`\\[${escapedPrefix}-(\\d+)\\]`);
-            const match = title.match(pattern);
-            return match ? parseInt(match[1]) : null;
+            const pattern = new RegExp(`${escapedPrefix}-(\\d+)`, 'g');
+            const matches = [...title.matchAll(pattern)];
+            return matches.map(match => parseInt(match[1]));
           }
 
           async function findNotionPage(taskId) {
@@ -261,37 +261,45 @@ runs:
               // PR opened: Add PR link to Notion
               // =====================================
               const title = context.payload.pull_request.title;
-              const taskId = extractTaskId(title);
+              const taskIds = extractTaskIds(title);
 
-              if (!taskId) {
+              if (taskIds.length === 0) {
                 console.log(`No ${prefix} ID found in PR title: ${title}`);
                 return;
               }
 
-              const page = await findNotionPage(taskId);
-              if (!page) {
-                console.log(`No Notion page found with ${process.env.NOTION_ID_PROPERTY}=${taskId}`);
-                return;
+              const notionPages = [];
+
+              for (const taskId of taskIds) {
+                const page = await findNotionPage(taskId);
+                if (!page) {
+                  console.log(`No Notion page found with ${process.env.NOTION_ID_PROPERTY}=${taskId}`);
+                  continue;
+                }
+
+                // Get existing rich text
+                const pageData = await getNotionPage(page.id);
+                const existingRichText = pageData.properties[process.env.NOTION_PR_PROPERTY]?.rich_text || [];
+
+                // Add PR link
+                const updatedRichText = addPrLinkToRichText(existingRichText, prNumber, prUrl);
+
+                const updatedPage = await updateNotionPage(page.id, {
+                  [process.env.NOTION_PR_PROPERTY]: {
+                    rich_text: updatedRichText
+                  }
+                });
+
+                console.log(`✅ Added PR link to ${prefix}-${taskId}`);
+                console.log(`   PR: ${prUrl}`);
+
+                notionPages.push({ page: updatedPage, taskId });
               }
 
-              // Get existing rich text
-              const pageData = await getNotionPage(page.id);
-              const existingRichText = pageData.properties[process.env.NOTION_PR_PROPERTY]?.rich_text || [];
-
-              // Add PR link
-              const updatedRichText = addPrLinkToRichText(existingRichText, prNumber, prUrl);
-
-              const updatedPage = await updateNotionPage(page.id, {
-                [process.env.NOTION_PR_PROPERTY]: {
-                  rich_text: updatedRichText
-                }
-              });
-
-              console.log(`✅ Added PR link to ${prefix}-${taskId}`);
-              console.log(`   PR: ${prUrl}`);
-
               // Post or update PR comment
-              await postOrUpdatePrComment([{ page: updatedPage, taskId }]);
+              if (notionPages.length > 0) {
+                await postOrUpdatePrComment(notionPages);
+              }
 
             } else if (eventAction === 'edited') {
               // =====================================
@@ -307,23 +315,30 @@ runs:
               const oldTitle = context.payload.changes.title.from;
               const newTitle = context.payload.pull_request.title;
 
-              const oldTaskId = extractTaskId(oldTitle);
-              const newTaskId = extractTaskId(newTitle);
+              const oldTaskIds = extractTaskIds(oldTitle);
+              const newTaskIds = extractTaskIds(newTitle);
 
               console.log(`Title changed: "${oldTitle}" -> "${newTitle}"`);
-              console.log(`Task ID changed: ${oldTaskId || 'none'} -> ${newTaskId || 'none'}`);
+              console.log(`Task IDs changed: [${oldTaskIds.join(', ') || 'none'}] -> [${newTaskIds.join(', ') || 'none'}]`);
 
-              // Skip if task ID is unchanged
-              if (oldTaskId === newTaskId) {
-                console.log('Task ID unchanged, skipping sync');
+              // Skip if task IDs are unchanged
+              const oldTaskIdsSet = new Set(oldTaskIds);
+              const newTaskIdsSet = new Set(newTaskIds);
+              const hasChanges = oldTaskIds.length !== newTaskIds.length ||
+                                oldTaskIds.some(id => !newTaskIdsSet.has(id)) ||
+                                newTaskIds.some(id => !oldTaskIdsSet.has(id));
+
+              if (!hasChanges) {
+                console.log('Task IDs unchanged, skipping sync');
                 return;
               }
 
               const notionPages = [];
 
-              // Remove PR link from old task
-              if (oldTaskId) {
-                const oldPage = await findNotionPage(oldTaskId);
+              // Remove PR link from tasks no longer in title
+              const removedTaskIds = oldTaskIds.filter(id => !newTaskIdsSet.has(id));
+              for (const taskId of removedTaskIds) {
+                const oldPage = await findNotionPage(taskId);
                 if (oldPage) {
                   const oldPageData = await getNotionPage(oldPage.id);
                   const oldRichText = oldPageData.properties[process.env.NOTION_PR_PROPERTY]?.rich_text || [];
@@ -335,14 +350,14 @@ runs:
                     }
                   });
 
-                  console.log(`✅ Removed PR link from ${prefix}-${oldTaskId}`);
-                  // Don't include in comment (not in current title)
+                  console.log(`✅ Removed PR link from ${prefix}-${taskId}`);
                 }
               }
 
-              // Add PR link to new task
-              if (newTaskId) {
-                const newPage = await findNotionPage(newTaskId);
+              // Add PR link to new tasks
+              const addedTaskIds = newTaskIds.filter(id => !oldTaskIdsSet.has(id));
+              for (const taskId of addedTaskIds) {
+                const newPage = await findNotionPage(taskId);
                 if (newPage) {
                   const newPageData = await getNotionPage(newPage.id);
                   const newRichText = newPageData.properties[process.env.NOTION_PR_PROPERTY]?.rich_text || [];
@@ -354,17 +369,30 @@ runs:
                     }
                   });
 
-                  console.log(`✅ Added PR link to ${prefix}-${newTaskId}`);
+                  console.log(`✅ Added PR link to ${prefix}-${taskId}`);
                   console.log(`   PR: ${prUrl}`);
-                  notionPages.push({ page: updatedNewPage, taskId: newTaskId });
+                  notionPages.push({ page: updatedNewPage, taskId });
                 }
               }
+
+              // Also include existing tasks (not added, but still in title) in comment
+              const existingTaskIds = newTaskIds.filter(id => oldTaskIdsSet.has(id));
+              for (const taskId of existingTaskIds) {
+                const page = await findNotionPage(taskId);
+                if (page) {
+                  const pageData = await getNotionPage(page.id);
+                  notionPages.push({ page: pageData, taskId });
+                }
+              }
+
+              // Sort by task ID for consistent display
+              notionPages.sort((a, b) => a.taskId - b.taskId);
 
               // Post or update PR comment
               if (notionPages.length > 0) {
                 await postOrUpdatePrComment(notionPages);
               } else {
-                // Delete comment if task ID was removed from title
+                // Delete comment if all task IDs were removed from title
                 await deleteNotionSyncComment();
               }
 
@@ -373,22 +401,27 @@ runs:
               // PR merged: Update status to "Done"
               // =====================================
               const title = context.payload.pull_request.title;
-              const taskId = extractTaskId(title);
+              const taskIds = extractTaskIds(title);
 
-              if (!taskId) {
+              if (taskIds.length === 0) {
                 console.log(`No ${prefix} ID found in PR title: ${title}`);
                 return;
               }
 
-              const page = await findNotionPage(taskId);
-              if (!page) {
-                console.log(`No Notion page found with ${process.env.NOTION_ID_PROPERTY}=${taskId}`);
+              // Skip status update if NOTION_STATUS_VALUE_DONE is empty
+              if (!process.env.NOTION_STATUS_VALUE_DONE) {
+                console.log(`⏭️  Skipped status update (NOTION_STATUS_VALUE_DONE is empty)`);
                 return;
               }
 
-              // Update status (PR link is already added)
-              // Skip status update if NOTION_STATUS_VALUE_DONE is empty
-              if (process.env.NOTION_STATUS_VALUE_DONE) {
+              for (const taskId of taskIds) {
+                const page = await findNotionPage(taskId);
+                if (!page) {
+                  console.log(`No Notion page found with ${process.env.NOTION_ID_PROPERTY}=${taskId}`);
+                  continue;
+                }
+
+                // Update status (PR link is already added)
                 await updateNotionPage(page.id, {
                   [process.env.NOTION_STATUS_PROPERTY]: {
                     status: {
@@ -398,8 +431,6 @@ runs:
                 });
 
                 console.log(`✅ Updated status for ${prefix}-${taskId} to "${process.env.NOTION_STATUS_VALUE_DONE}"`);
-              } else {
-                console.log(`⏭️  Skipped status update (NOTION_STATUS_VALUE_DONE is empty)`);
               }
 
               // No comment update needed on merge

@@ -9,6 +9,7 @@
 ## Features
 
 - 🔗 **Automatic PR Linking**: Automatically add PR links to Notion when creating a PR
+- 🔢 **Multiple Task Support**: Link a single PR to multiple Notion tasks (e.g., `TASK-123 TASK-456`)
 - ✏️ **Title Change Detection**: Automatically update Notion when PR title (task ID) changes
 - ✅ **Status Update**: Automatically update Notion status to "Done" when PR is merged
 - 💬 **PR Comments**: Post Notion page links as PR comments
@@ -17,7 +18,7 @@
 
 ### 1. PR Created
 ```
-Create PR: [TASK-123] Add new feature
+Create PR: TASK-123 Add new feature
 ↓
 ✅ Add PR link to Notion
 ✅ Post comment on PR with Notion page link
@@ -25,7 +26,7 @@ Create PR: [TASK-123] Add new feature
 
 ### 2. Title Edited (Task ID Changed)
 ```
-Change title: [TASK-123] → [TASK-456]
+Change title: TASK-123 → TASK-456
 ↓
 ✅ Remove PR link from TASK-123
 ✅ Add PR link to TASK-456
@@ -60,7 +61,7 @@ Your Notion Database needs these properties:
 
 **Important**:
 - Use **Unique ID** type for the `ID` property
-- Configure the Unique ID with a **prefix** (e.g., "TASK") to match your PR title format `[TASK-123]`
+- Configure the Unique ID with a **prefix** (e.g., "TASK") to match your PR title format `TASK-123`
 - Add "Done" option to `Status` property
 - Connect your Integration to the Database (... menu → Add connections)
 
@@ -111,7 +112,7 @@ jobs:
           notion_status_property: 'Status'      # Status property name (Status type, not Select)
           notion_status_value_done: 'Done'      # Status value when PR is merged
           notion_pr_property: 'GitHub PR'       # Property name for PR links (Rich text type)
-          pr_title_prefix: 'TASK'               # Prefix in PR title (e.g., [TASK-123])
+          pr_title_prefix: 'TASK'               # Prefix in PR title (e.g., TASK-123)
 ```
 
 **Note**: Customize the inputs to match your Notion Database property names and values.
@@ -120,13 +121,54 @@ jobs:
 
 Create a PR with a title like:
 ```
-[TASK-123] Add authentication feature
+TASK-123 Add authentication feature
+```
+
+Or link multiple tasks:
+```
+TASK-123 TASK-456 Fix authentication and update docs
 ```
 
 The workflow will:
-- Add PR link to Notion task #123
-- Post a comment on the PR with link to Notion page
-- Update status to "Done" when merged
+- Add PR link to the specified Notion task(s)
+- Post a comment on the PR with link(s) to Notion page(s)
+- Update status to "Done" when merged (for all linked tasks)
+
+## Multiple Task Support
+
+You can link a single PR to multiple Notion tasks by including multiple task IDs in the PR title:
+
+```
+TASK-123 TASK-456 TASK-789 Implement feature across multiple components
+```
+
+### How it works:
+
+**When PR is created:**
+- PR link is added to all specified tasks (TASK-123, TASK-456, TASK-789)
+- PR comment shows links to all Notion pages
+
+**When title is edited:**
+- Removing `TASK-123` removes the PR link from that task
+- Adding `TASK-999` adds the PR link to that task
+- Existing links remain unchanged
+
+**When PR is merged:**
+- All tasks in the title are updated to "Done" status
+
+**Example workflow:**
+```
+1. Create PR: TASK-123 TASK-456 Feature implementation
+   → Links added to both tasks
+
+2. Edit title: TASK-123 TASK-789 Feature implementation
+   → Link removed from TASK-456
+   → Link added to TASK-789
+   → TASK-123 link unchanged
+
+3. Merge PR
+   → Both TASK-123 and TASK-789 marked as "Done"
+```
 
 ## Configuration
 
@@ -142,7 +184,7 @@ All settings can be customized via action inputs:
 | `notion_status_property` | Yes | Status property name (Status type, not Select) |
 | `notion_status_value_done` | No | Status value to set when PR is merged (leave empty to disable status update) |
 | `notion_pr_property` | Yes | Property name for PR links (Rich text type) |
-| `pr_title_prefix` | Yes | Prefix in PR title (e.g., `TASK` for `[TASK-123]`) |
+| `pr_title_prefix` | Yes | Prefix in PR title (e.g., `TASK` for `TASK-123`) |
 
 Example with custom configuration:
 
