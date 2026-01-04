@@ -103,7 +103,7 @@ jobs:
       issues: write
     steps:
       - name: Sync to Notion
-        uses: isoppp/github-pr-sync-with-notion@v0.1.0
+        uses: isoppp/github-pr-sync-with-notion@v0.2.0
         with:
           # Customize these based on your Notion Database setup
           notion_token: ${{ secrets.NOTION_TOKEN }}
@@ -189,7 +189,7 @@ All settings can be customized via action inputs:
 Example with custom configuration:
 
 ```yaml
-- uses: isoppp/github-pr-sync-with-notion@v0.1.0
+- uses: isoppp/github-pr-sync-with-notion@v0.2.0
   with:
     notion_token: ${{ secrets.NOTION_TOKEN }}
     notion_database_id: ${{ secrets.NOTION_DATABASE_ID }}
@@ -203,7 +203,7 @@ Example with custom configuration:
 To disable status updates when PR is merged:
 
 ```yaml
-- uses: isoppp/github-pr-sync-with-notion@v0.1.0
+- uses: isoppp/github-pr-sync-with-notion@v0.2.0
   with:
     notion_token: ${{ secrets.NOTION_TOKEN }}
     notion_database_id: ${{ secrets.NOTION_DATABASE_ID }}
